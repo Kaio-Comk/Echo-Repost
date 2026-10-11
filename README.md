@@ -1,11 +1,19 @@
-# InstaRepost
+<div align="center">
 
-Sistema modular que **descobre Reels de um perfil autorizado, baixa, gera uma legenda
-original com IA local (Ollama) e publica automaticamente na sua própria conta** —
-24/7, com renovação automática de token e cadência controlada.
+# 📸 InstaRepost
+### Autonomous Instagram Reels Pipeline: Local AI Captioning (Ollama) & Official Graph API Publishing
 
-Construído com Clean Architecture, SOLID e foco em produção: configuração por ambiente,
-logging estruturado, testes e camadas desacopladas e substituíveis.
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg?logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/Web%20Panel-FastAPI-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![AI Engine: Ollama](https://img.shields.io/badge/AI%20Engine-Local%20Ollama%20(Llama%203.2%20%7C%20Qwen)-orange.svg)](https://ollama.com)
+[![Publisher: Meta Graph API](https://img.shields.io/badge/Publishing-Official%20Meta%20Graph%20API-4267B2.svg?logo=meta&logoColor=white)](https://developers.facebook.com)
+[![Architecture: Clean & SOLID](https://img.shields.io/badge/Architecture-Clean%20Architecture%20%7C%20SOLID-purple.svg)](https://github.com/Kaio-Comk/InstaRepost)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-yellow.svg)](https://opensource.org/licenses/GPL-3.0)
+
+**Descobre Reels de perfis autorizados, gera legendas originais com IA local (Ollama) e publica 24/7 pela API Oficial do Instagram.**  
+*Painel web de aprovação em FastAPI, túnel Cloudflare integrado e renovação automática de tokens OAuth.*
+
+</div>
 
 ---
 
@@ -24,21 +32,30 @@ conta principal. O núcleo (IA, publicação oficial, token, banco) é independe
 
 ---
 
-## Fluxo final (24/7, totalmente automático)
+## 🏗️ Fluxo Operacional 24/7
 
-```
-┌─ a cada POLL_INTERVAL_SECONDS ─────────────────────────────────────────┐
-│ 1. Descoberta: busca Reels novos do TARGET_USERNAME (instagrapi)        │
-│    e enche data/queue.txt — sem repetir (dedup contra fila/done/banco)  │
-│ 2. Pega 1 URL da fila → baixa o vídeo (instaloader) → valida            │
-│ 3. IA local (Ollama) gera legenda original:                            │
-│      • começa com o TÍTULO do filme/série                              │
-│      • inclui "link para assistir na bio"                              │
-│      • sem aspas, com hashtags                                         │
-│ 4. Publica 1 vídeo via Graph API oficial (trava de intervalo mínimo    │
-│    evita rajada ao reiniciar)                                          │
-│ 5. Renova o token automaticamente quando falta < 10 dias               │
-└────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    Target["🎯 Perfil Alvo (Instagram)"] --> Ingest["📥 Descoberta & Download (Conta Descartável)"]
+    Ingest --> Dedup{"Reel já publicado?"}
+    Dedup -->|Sim| Skip["⏭️ Ignora duplicata"]
+    Dedup -->|Não| Queue["📂 Fila Local (data/queue.txt)"]
+    
+    Queue --> LocalAI["🤖 IA Local Ollama (Llama 3.2 / Qwen)"]
+    LocalAI --> Caption["✍️ Geração de Legenda Original & Hashtags"]
+    
+    Caption --> Approval{"Requer Aprovação Manual?"}
+    Approval -->|Sim| Panel["🖥️ Painel Web FastAPI (Revisão Humana)"]
+    Approval -->|Não (Automático)| Publisher
+    Panel -->|"Aprovado"| Publisher["🚀 Publicador Oficial Meta Graph API"]
+    
+    Publisher --> Tunnel["🌐 Túnel Cloudflare (Hospedagem temporária de vídeo)"]
+    Tunnel --> Meta["📸 Servidores Meta (Publicação Final no Perfil)"]
+    
+    subgraph Maintenance ["Serviços em Segundo Plano"]
+        TokenWatch["🔑 Token Watcher (Auto-renovação com < 10 dias de expiração)"]
+        RateControl["⏱️ Trava de Cadência Segura (Anti-Spam)"]
+    end
 ```
 
 A **descoberta não é mágica**: ela depende da conta logada conseguir listar o feed do alvo
