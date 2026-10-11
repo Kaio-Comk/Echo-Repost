@@ -1,13 +1,13 @@
 <div align="center">
 
-# 📸 InstaRepost
+# 📸 Echo-Repost
 ### Autonomous Instagram Reels Pipeline: Local AI Captioning (Ollama) & Official Graph API Publishing
 
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg?logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/Web%20Panel-FastAPI-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![AI Engine: Ollama](https://img.shields.io/badge/AI%20Engine-Local%20Ollama%20(Llama%203.2%20%7C%20Qwen)-orange.svg)](https://ollama.com)
 [![Publisher: Meta Graph API](https://img.shields.io/badge/Publishing-Official%20Meta%20Graph%20API-4267B2.svg?logo=meta&logoColor=white)](https://developers.facebook.com)
-[![Architecture: Clean & SOLID](https://img.shields.io/badge/Architecture-Clean%20Architecture%20%7C%20SOLID-purple.svg)](https://github.com/Kaio-Comk/InstaRepost)
+[![Architecture: Clean & SOLID](https://img.shields.io/badge/Architecture-Clean%20Architecture%20%7C%20SOLID-purple.svg)](https://github.com/Kaio-Comk/Echo-Repost)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-yellow.svg)](https://opensource.org/licenses/GPL-3.0)
 
 **Descobre Reels de perfis autorizados, gera legendas originais com IA local (Ollama) e publica 24/7 pela API Oficial do Instagram.**  
@@ -108,7 +108,7 @@ project/
 ## Instalação
 
 ```bash
-cd InstaRepost
+cd Echo-Repost
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env        # ajuste as variáveis
