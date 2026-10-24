@@ -17,18 +17,19 @@
 
 ---
 
-## ⚠️ Aviso de compliance (leia antes)
+## 🛡️ Arquitetura Segura & Compliance
 
-O sistema combina **dois caminhos** com níveis de risco diferentes:
+O Echo-Repost foi projetado desacoplando estritamente o pipeline em camadas independentes para garantir conformidade e segurança operacional:
 
-| Etapa | Como é feito | Oficial? | Risco |
-|---|---|---|---|
-| **Descoberta + download** dos Reels de outro perfil | `instagrapi` / `instaloader` (API privada, conta logada) | ❌ Não-oficial | Pode violar o ToS da Meta; a conta usada pode ser **limitada/banida** |
-| **Publicação** na sua conta | Instagram Content Publishing API (login por Instagram) | ✅ Oficial | Estável; respeita políticas da Meta |
+### Modos de Ingestão de Conteúdo
+1. **📂 Ingestão Manual / Drop Direto (Recomendado & Padrão):** O usuário adiciona seus próprios vídeos diretamente via Painel Web FastAPI ou pasta local `inbox/`. Sem risco de bloqueios.
+2. **🌐 Webhooks / Parceiros Autorizados:** Recepção de mídia via endpoint seguro com chave de API.
+3. **⚠️ Scraper de Referência Externa (Opcional):** Módulo opcional via APIs privadas de terceiros (`instagrapi`). Se utilizado, **deve ser executado apenas com conta descartável de pesquisa**, nunca com sua credencial principal.
 
-A ingestão de conteúdo de terceiros, mesmo "autorizado", é **responsabilidade sua** perante
-a Meta e o autor original. Use uma conta **descartável** para a descoberta/download, nunca a
-conta principal. O núcleo (IA, publicação oficial, token, banco) é independente da ingestão.
+### 🔐 Segurança de Credenciais & Tokens
+* **Tokens Long-Lived Meta Graph API:** Armazenados exclusivamente em variáveis de ambiente locais protegidas (`.env`, git-ignored), com rotação automática programada antes de 60 dias.
+* **Mascaramento em Logs:** O sistema mascara automaticamente tokens de acesso, IDs e chaves secretas de qualquer traceback ou console log.
+* **Aprovação Humana Obrigatória (HITL):** Nenhuma mídia é publicada na Graph API sem consentimento ativo no painel de aprovação FastAPI.
 
 ---
 
