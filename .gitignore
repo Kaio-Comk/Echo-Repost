@@ -22,3 +22,5 @@ database/*
 .DS_Store
 .idea/
 .vscode/
+downloads_ensaio/
+logs_ensaio/

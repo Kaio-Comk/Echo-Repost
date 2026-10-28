@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     ollama_exe: str = ""
     ollama_models_dir: str = ""
     default_caption_style: str = "viral"
+    # editar_original: reaproveita a legenda do Reel de origem (limpa, com CTA e hashtags do NetHub);
+    # ia: gera uma legenda nova com o Ollama. Reel sem legenda cai na IA nos dois casos.
+    caption_mode: str = "editar_original"
+    caption_hashtags_extra: str = "#nethub"
     # CTA anexado automaticamente se a IA esquecer de citar o link na bio.
     bio_cta: str = "🎬 Link pra assistir na nossa bio!"
 

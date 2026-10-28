@@ -95,7 +95,7 @@ class PipelineService:
             pending_ids = [v.id for v in VideoRepository(session).list_unprocessed()]
 
         generator = get_caption_generator()
-        if pending_ids and not generator.health_check():
+        if pending_ids and get_settings().caption_mode != "editar_original" and not generator.health_check():
             report.log("⚠️  Ollama indisponível — pulando geração de legendas.")
 
         for vid in pending_ids:
@@ -120,7 +120,7 @@ class PipelineService:
                 video.size_bytes = outcome.size_bytes
 
                 # Legenda (best-effort: se a IA cair, deixa pendente para retry)
-                if generator.health_check():
+                if get_settings().caption_mode == "editar_original" or generator.health_check():
                     CaptionService(session, generator).generate_for_video(video.id)
                     video.processed = True
                     report.processed += 1

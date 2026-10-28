@@ -103,3 +103,9 @@ def _ambiente_isolado_do_env_real(monkeypatch):
     yield
     if hasattr(cfg.get_settings, "cache_clear"):
         cfg.get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _legenda_pela_ia_nos_testes_antigos(monkeypatch):
+    """Os testes de legenda existentes cobrem o caminho da IA; o modo editar_original tem testes próprios."""
+    monkeypatch.setenv("CAPTION_MODE", "ia")
