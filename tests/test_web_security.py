@@ -50,3 +50,17 @@ def test_local_continua_passando_pelo_middleware(cliente):
     # sem cabeçalho de proxy = o próprio computador: o middleware não barra
     r = cliente.get("/media/video.mp4")
     assert r.status_code == 200
+
+
+def test_post_de_outro_site_e_recusado(cliente):
+    r = cliente.post("/publish", headers={"origin": "https://site-malicioso.example", "host": "127.0.0.1:8000"})
+    assert r.status_code == 403
+    r = cliente.post("/publish", headers={"sec-fetch-site": "cross-site"})
+    assert r.status_code == 403
+
+
+def test_post_da_propria_origem_passa(cliente):
+    r = cliente.post(
+        "/publish", headers={"origin": "http://127.0.0.1:8000", "host": "127.0.0.1:8000"}, follow_redirects=False
+    )
+    assert r.status_code == 303

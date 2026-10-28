@@ -91,6 +91,16 @@ def _pop_one_url(path: Path) -> Optional[str]:
     return url
 
 
+def _requeue_url(path: Path, url: str) -> None:
+    """Devolve a URL ao topo da fila e tira do .done (a ingestão dela falhou)."""
+    atual = path.read_text(encoding="utf-8") if path.exists() else ""
+    path.write_text(url + "\n" + atual, encoding="utf-8")
+    done = path.with_suffix(".done.txt")
+    if done.exists():
+        restantes = [ln for ln in done.read_text(encoding="utf-8").splitlines() if ln.strip() != url]
+        done.write_text("\n".join(restantes) + ("\n" if restantes else ""), encoding="utf-8")
+
+
 def _recently_posted(settings) -> bool:
     """True se o último post foi há menos que ~90% do intervalo (evita rajadas no restart)."""
     f = settings.data_path / "last_post.txt"
@@ -122,7 +132,12 @@ def _tick() -> None:
             url = _pop_one_url(settings.url_queue_path)
             if url:
                 logger.info("Fila -> processando: %s", url)
-                pipeline.run_ingestion_urls([url])
+                try:
+                    pipeline.run_ingestion_urls([url])
+                except Exception as exc:
+                    # Sem isto a URL já saiu da fila e o Reel se perdia em silêncio.
+                    logger.error("Ingestão da URL falhou (%s); devolvida à fila.", exc)
+                    _requeue_url(settings.url_queue_path, url)
             else:
                 logger.info("Sem pendentes e fila vazia (%s).", settings.url_queue_path)
         else:

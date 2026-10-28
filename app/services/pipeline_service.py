@@ -20,6 +20,7 @@ from app.publishers import get_publisher
 from app.repositories import JobRepository, VideoRepository
 from app.services.caption_service import CaptionService
 from app.services.download_service import DownloadError, DownloadService
+from app.services.falhas import FalhasStore
 from app.services.monitor_service import MonitorService
 from app.services.publish_service import PublishService
 from app.sources import get_source_provider
@@ -136,17 +137,25 @@ class PipelineService:
                 jobs.finish(job, JobStatus.FAILED, str(exc))
                 report.log(f"Vídeo {video_id} falhou: {exc}")
 
+    @staticmethod
+    def _falhas() -> FalhasStore:
+        return FalhasStore(get_settings().data_path / "falhas_publicacao.json")
+
     def has_pending_publish(self) -> int:
-        """Quantos vídeos estão processados e aguardando publicação."""
+        """Quantos vídeos estão processados e aguardando publicação (fora da quarentena)."""
+        falhas = self._falhas()
         with session_scope() as session:
-            return len(VideoRepository(session).list_pending_publish())
+            pendentes = VideoRepository(session).list_pending_publish()
+            return sum(1 for v in pendentes if not falhas.em_quarentena(v.id))
 
     def publish_one(self) -> PipelineReport:
         """Publica EXATAMENTE um vídeo pendente (o mais antigo). Base do 1/hora."""
         report = PipelineReport()
         with session_scope() as session:
             pending = VideoRepository(session).list_pending_publish()
-            vid = pending[0].id if pending else None
+            falhas = self._falhas()
+            # Vídeo que já falhou várias vezes sai da frente da fila (senão trava tudo).
+            vid = next((v.id for v in pending if not falhas.em_quarentena(v.id)), None)
 
         if vid is None:
             report.log("Nada pendente para publicar neste ciclo.")
@@ -159,9 +168,11 @@ class PipelineService:
         if result.success:
             if result.external_id not in ("dry-run", None):
                 report.published += 1
+            self._falhas().limpar(vid)
             report.log(f"Publicado vídeo {vid}: {result.external_id}")
         else:
-            report.log(f"Vídeo {vid} não publicado: {result.message}")
+            total = self._falhas().registrar(vid, result.message)
+            report.log(f"Vídeo {vid} não publicado ({total} tentativa(s) com falha): {result.message}")
         return report
 
     def publish_approved(self) -> PipelineReport:

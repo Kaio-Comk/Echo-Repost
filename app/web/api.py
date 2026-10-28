@@ -11,6 +11,7 @@ Funcionalidades:
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -44,7 +45,21 @@ async def _so_media_pela_internet(request: Request, call_next):
     de_fora = any(h in request.headers for h in _CABECALHOS_DE_PROXY)
     if de_fora and not request.url.path.startswith("/media/"):
         return HTMLResponse("Acesso restrito ao computador local.", status_code=403)
+    if request.method not in ("GET", "HEAD", "OPTIONS") and not _origem_confiavel(request):
+        return HTMLResponse("Origem não confiável.", status_code=403)
     return await call_next(request)
+
+
+def _origem_confiavel(request: Request) -> bool:
+    """Bloqueia POST vindo de outra página aberta no navegador (CSRF): o painel
+    local não tem login, então qualquer site poderia aprovar e publicar por ele.
+    Sem cabeçalho Origin (curl, scripts locais) a chamada passa."""
+    if request.headers.get("sec-fetch-site") == "cross-site":
+        return False
+    origem = request.headers.get("origin")
+    if not origem:
+        return True
+    return urlparse(origem).netloc == request.headers.get("host", "")
 
 
 @app.on_event("startup")

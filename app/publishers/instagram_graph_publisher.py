@@ -26,6 +26,7 @@ import requests
 from app.config.settings import get_settings
 from app.publishers.base import Publisher, PublishRequest, PublishResult
 from app.utils.logging_config import get_logger
+from app.utils.redact import redact
 
 logger = get_logger(__name__)
 
@@ -66,7 +67,7 @@ class InstagramGraphPublisher(Publisher):
             post_id = self._publish_container(creation_id)
         except requests.RequestException as exc:
             logger.error("Falha na publicação oficial: %s", exc)
-            return PublishResult(success=False, message=str(exc))
+            return PublishResult(success=False, message=redact(str(exc)))
 
         logger.info("Publicado via Graph API. post_id=%s", post_id)
         return PublishResult(success=True, external_id=post_id, message="Publicado.")

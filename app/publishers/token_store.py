@@ -19,6 +19,7 @@ import requests
 
 from app.config.settings import get_settings
 from app.utils.logging_config import get_logger
+from app.utils.redact import redact
 
 logger = get_logger(__name__)
 
@@ -115,5 +116,5 @@ def ensure_fresh(force: bool = False) -> str:
             return new["access_token"]
         logger.error("Falha ao renovar token IG: %s", j)
     except requests.RequestException as exc:
-        logger.error("Erro de rede ao renovar token IG: %s", exc)
+        logger.error("Erro de rede ao renovar token IG: %s", redact(str(exc)))
     return data["access_token"]

@@ -6,6 +6,7 @@ import logging.handlers
 from pathlib import Path
 
 from app.config.settings import get_settings
+from app.utils.redact import RedactingFilter
 
 _CONFIGURED = False
 
@@ -28,10 +29,12 @@ def configure_logging(force: bool = False) -> None:
     root = logging.getLogger()
     root.setLevel(level)
     root.handlers.clear()
+    redator = RedactingFilter()
 
     # Console
     console = logging.StreamHandler()
     console.setFormatter(formatter)
+    console.addFilter(redator)
     root.addHandler(console)
 
     # Arquivo rotativo (5 MB x 5 backups)
@@ -39,6 +42,7 @@ def configure_logging(force: bool = False) -> None:
         log_dir / "instarepost.log", maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8"
     )
     file_handler.setFormatter(formatter)
+    file_handler.addFilter(redator)
     root.addHandler(file_handler)
 
     # Erros num arquivo dedicado para triagem rápida.
@@ -47,6 +51,7 @@ def configure_logging(force: bool = False) -> None:
     )
     error_handler.setLevel(logging.ERROR)
     error_handler.setFormatter(formatter)
+    error_handler.addFilter(redator)
     root.addHandler(error_handler)
 
     _CONFIGURED = True
