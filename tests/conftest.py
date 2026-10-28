@@ -83,3 +83,23 @@ def temp_app_env(tmp_path, monkeypatch):
     yield {"watch": watch, "downloads": downloads, "db": db_file}
 
     settings_mod.get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _ambiente_isolado_do_env_real(monkeypatch):
+    """Os testes nunca leem o .env real: variáveis de ambiente vencem o arquivo.
+    Sem isto, PUBLISHER=instagrapi do .env de produção faria teste tentar logar na conta."""
+    monkeypatch.setenv("PUBLISHER", "dry_run")
+    monkeypatch.setenv("SOURCE_PROVIDER", "manual")
+    monkeypatch.setenv("AUTO_DISCOVERY", "false")
+    monkeypatch.setenv("OLLAMA_EXE", "")
+    monkeypatch.setenv("INSTAGRAPI_USER", "")
+    monkeypatch.setenv("INSTAGRAPI_PASSWORD", "")
+    monkeypatch.setenv("INSTALOADER_USER", "")
+    monkeypatch.setenv("INSTALOADER_PASSWORD", "")
+    from app.config import settings as cfg
+    if hasattr(cfg.get_settings, "cache_clear"):
+        cfg.get_settings.cache_clear()
+    yield
+    if hasattr(cfg.get_settings, "cache_clear"):
+        cfg.get_settings.cache_clear()

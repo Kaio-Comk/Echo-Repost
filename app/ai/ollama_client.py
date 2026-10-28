@@ -44,13 +44,25 @@ class OllamaCaptionGenerator(CaptionGenerator):
             raise RuntimeError("Ollama retornou legenda vazia.")
         return caption
 
-    def health_check(self) -> bool:
+    def _ping(self) -> bool:
         try:
             resp = requests.get(f"{self.base_url}/api/tags", timeout=5)
             return resp.status_code == 200
         except requests.RequestException as exc:
             logger.warning("Ollama indisponível: %s", exc)
             return False
+
+    def health_check(self) -> bool:
+        if self._ping():
+            return True
+        s = get_settings()
+        if not s.ollama_exe:
+            return False
+        # Outro serviço do PC (IA de suporte) desliga o Ollama quando fica ocioso: religa aqui.
+        from app.ai.ollama_boot import garantir_ollama, iniciar_padrao
+
+        garantir_ollama(self.base_url, iniciar=lambda: iniciar_padrao(s.ollama_exe, s.ollama_models_dir))
+        return self._ping()
 
     # ---- Internos ----
     def _build_prompt(self, context: str, style: str, target_username: str, extra: str) -> str:

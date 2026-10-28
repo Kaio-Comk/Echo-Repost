@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen3"
     ollama_timeout: int = 120
+    # Se preenchidos, o robô religa o Ollama sozinho quando ele estiver desligado (só em localhost).
+    ollama_exe: str = ""
+    ollama_models_dir: str = ""
     default_caption_style: str = "viral"
     # CTA anexado automaticamente se a IA esquecer de citar o link na bio.
     bio_cta: str = "🎬 Link pra assistir na nossa bio!"
@@ -84,6 +87,10 @@ class Settings(BaseSettings):
 
     # --- Scheduler ---
     poll_interval_seconds: int = 900
+    # Janela diária de publicação (hora local) e fuso: fora dela o agendador só dorme.
+    window_start_hour: int = 8
+    window_end_hour: int = 22
+    timezone: str = "America/Sao_Paulo"
     # Fila de URLs consumida pelo scheduler (modo instaloader): 1 link por linha.
     url_queue_file: str = "data/queue.txt"
     # Descoberta automática: busca Reels novos do TARGET_USERNAME e enche a fila.

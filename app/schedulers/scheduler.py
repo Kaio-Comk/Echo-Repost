@@ -14,7 +14,10 @@ No modo manual, processa a pasta data/inbox e publica 1 por ciclo.
 """
 from __future__ import annotations
 
+import random
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Optional
 
@@ -24,6 +27,7 @@ from sqlalchemy import select
 from app.config.settings import get_settings
 from app.db import init_db, session_scope
 from app.models.video import Video
+from app.schedulers.agenda import dentro_da_janela, proximo_ciclo
 from app.services.pipeline_service import PipelineService
 from app.sources.instaloader_source import extract_shortcode
 from app.utils.logging_config import get_logger
@@ -102,7 +106,7 @@ def _requeue_url(path: Path, url: str) -> None:
 
 
 def _recently_posted(settings) -> bool:
-    """True se o último post foi há menos que ~90% do intervalo (evita rajadas no restart)."""
+    """True se o último post foi há menos que ~60% do intervalo (o jitter vai até -30%) (evita rajadas no restart)."""
     f = settings.data_path / "last_post.txt"
     if not f.exists():
         return False
@@ -110,7 +114,7 @@ def _recently_posted(settings) -> bool:
         last = float(f.read_text(encoding="utf-8").strip())
     except Exception:
         return False
-    return (time.time() - last) < settings.poll_interval_seconds * 0.9
+    return (time.time() - last) < settings.poll_interval_seconds * 0.6
 
 
 def _mark_posted(settings) -> None:
@@ -165,22 +169,40 @@ def _tick() -> None:
         _mark_posted(settings)
 
 
+def _agendar(scheduler, settings) -> None:
+    """Marca o próximo ciclo: intervalo com variação aleatória, sempre dentro da janela diária."""
+    agora = datetime.now(ZoneInfo(settings.timezone))
+    quando = proximo_ciclo(agora, settings.poll_interval_seconds, settings.window_start_hour,
+                           settings.window_end_hour, random.Random())
+    scheduler.add_job(_ciclo, "date", run_date=quando, args=[scheduler, settings], id="auto_post",
+                      replace_existing=True, misfire_grace_time=3600)
+    logger.info("Próximo ciclo: %s", quando.isoformat(timespec="minutes"))
+
+
+def _ciclo(scheduler, settings) -> None:
+    try:
+        agora = datetime.now(ZoneInfo(settings.timezone))
+        if dentro_da_janela(agora, settings.window_start_hour, settings.window_end_hour):
+            _tick()
+        else:
+            logger.info("Fora da janela %02dh-%02dh: nada a fazer agora.",
+                        settings.window_start_hour, settings.window_end_hour)
+    except Exception:
+        logger.exception("Ciclo falhou; o próximo já está agendado.")
+    finally:
+        _agendar(scheduler, settings)
+
+
 def run_scheduler() -> None:
     settings = get_settings()
     settings.ensure_dirs()
     init_db()
 
-    scheduler = BlockingScheduler(timezone="UTC")
-    scheduler.add_job(
-        _tick,
-        "interval",
-        seconds=settings.poll_interval_seconds,
-        id="auto_post",
-        max_instances=1,
-        coalesce=True,
-    )
-    logger.info("Scheduler 24/7 ativo: 1 publicação a cada %ds.", settings.poll_interval_seconds)
-    _tick()  # primeiro ciclo imediato
+    scheduler = BlockingScheduler(timezone=settings.timezone)
+    logger.info("Scheduler 24/7 ativo: ~1 publicação a cada %ds, entre %02dh e %02dh (%s), horários variáveis.",
+                settings.poll_interval_seconds, settings.window_start_hour, settings.window_end_hour,
+                settings.timezone)
+    _ciclo(scheduler, settings)  # primeiro ciclo imediato (se estiver na janela) e já agenda o seguinte
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):  # pragma: no cover
