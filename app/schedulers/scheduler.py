@@ -27,7 +27,9 @@ from sqlalchemy import select
 from app.config.settings import get_settings
 from app.db import init_db, session_scope
 from app.models.video import Video
-from app.schedulers.agenda import dentro_da_janela, proximo_ciclo
+from app.schedulers.agenda import dentro_da_janela
+from app.schedulers.cota import RegistroPublicacoes, contar_do_dia, cota_do_dia
+from app.schedulers.horario import proximo_horario
 from app.services.pipeline_service import PipelineService
 from app.sources.instaloader_source import extract_shortcode
 from app.utils.logging_config import get_logger
@@ -106,7 +108,7 @@ def _requeue_url(path: Path, url: str) -> None:
 
 
 def _recently_posted(settings) -> bool:
-    """True se o último post foi há menos que ~60% do intervalo (o jitter vai até -30%) (evita rajadas no restart)."""
+    """True se o último post foi há menos que MIN_GAP_HOURS (evita rajadas depois de uma queda ou reinício)."""
     f = settings.data_path / "last_post.txt"
     if not f.exists():
         return False
@@ -114,11 +116,27 @@ def _recently_posted(settings) -> bool:
         last = float(f.read_text(encoding="utf-8").strip())
     except Exception:
         return False
-    return (time.time() - last) < settings.poll_interval_seconds * 0.6
+    return (time.time() - last) < settings.min_gap_hours * 3600
 
 
 def _mark_posted(settings) -> None:
     (settings.data_path / "last_post.txt").write_text(str(time.time()), encoding="utf-8")
+    _registro(settings).adicionar(datetime.now(ZoneInfo(settings.timezone)))
+
+
+def _registro(settings) -> RegistroPublicacoes:
+    return RegistroPublicacoes(settings.data_path / "publicacoes.json")
+
+
+def _situacao_do_dia(settings):
+    """(feitas hoje, cota de hoje, última publicação, cota de amanhã) conforme o registro de publicações."""
+    registro = _registro(settings)
+    momentos = registro.momentos()
+    primeira = registro.primeiro_dia()
+    hoje = datetime.now(ZoneInfo(settings.timezone)).date()
+    amanha = hoje.fromordinal(hoje.toordinal() + 1)
+    return (contar_do_dia(momentos, hoje), cota_do_dia(primeira, hoje, settings.max_posts_per_day),
+            momentos[-1] if momentos else None, cota_do_dia(primeira, amanha, settings.max_posts_per_day))
 
 
 def _tick() -> None:
@@ -158,6 +176,11 @@ def _tick() -> None:
 
         ensure_fresh()
 
+    feitas, cota, _ultimo, _amanha = _situacao_do_dia(settings)
+    if feitas >= cota:
+        logger.info("Cota de hoje atingida (%d de %d): sem publicar agora.", feitas, cota)
+        return
+
     if _recently_posted(settings):
         logger.info("Post recente (< intervalo mínimo) — pulando publicação neste ciclo.")
         return
@@ -170,13 +193,14 @@ def _tick() -> None:
 
 
 def _agendar(scheduler, settings) -> None:
-    """Marca o próximo ciclo: intervalo com variação aleatória, sempre dentro da janela diária."""
+    """Sorteia o próximo horário de publicação: aleatório dentro da janela, respeitando a cota e o espaço mínimo."""
     agora = datetime.now(ZoneInfo(settings.timezone))
-    quando = proximo_ciclo(agora, settings.poll_interval_seconds, settings.window_start_hour,
-                           settings.window_end_hour, random.Random())
+    feitas, cota, ultimo, cota_amanha = _situacao_do_dia(settings)
+    quando = proximo_horario(agora, feitas, cota, ultimo, settings.window_start_hour, settings.window_end_hour,
+                             random.Random(), gap_min_h=settings.min_gap_hours, cota_amanha=cota_amanha)
     scheduler.add_job(_ciclo, "date", run_date=quando, args=[scheduler, settings], id="auto_post",
                       replace_existing=True, misfire_grace_time=3600)
-    logger.info("Próximo ciclo: %s", quando.isoformat(timespec="minutes"))
+    logger.info("Hoje: %d de %d. Próximo ciclo sorteado: %s", feitas, cota, quando.isoformat(timespec="minutes"))
 
 
 def _ciclo(scheduler, settings) -> None:
@@ -199,10 +223,9 @@ def run_scheduler() -> None:
     init_db()
 
     scheduler = BlockingScheduler(timezone=settings.timezone)
-    logger.info("Scheduler 24/7 ativo: ~1 publicação a cada %ds, entre %02dh e %02dh (%s), horários variáveis.",
-                settings.poll_interval_seconds, settings.window_start_hour, settings.window_end_hour,
-                settings.timezone)
-    _ciclo(scheduler, settings)  # primeiro ciclo imediato (se estiver na janela) e já agenda o seguinte
+    logger.info("Scheduler 24/7 ativo: até %d por dia (sobe aos poucos), entre %02dh e %02dh (%s), horários sorteados.",
+                settings.max_posts_per_day, settings.window_start_hour, settings.window_end_hour, settings.timezone)
+    _agendar(scheduler, settings)  # não publica ao ligar: só no horário sorteado
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):  # pragma: no cover

@@ -92,6 +92,9 @@ class Settings(BaseSettings):
     # --- Scheduler ---
     poll_interval_seconds: int = 900
     # Janela diária de publicação (hora local) e fuso: fora dela o agendador só dorme.
+    # Limite por dia com subida gradual (1 na 1a semana, 2 até a 3a, depois até o teto) e espaço mínimo entre posts.
+    max_posts_per_day: int = 3
+    min_gap_hours: float = 3.0
     window_start_hour: int = 8
     window_end_hour: int = 22
     timezone: str = "America/Sao_Paulo"

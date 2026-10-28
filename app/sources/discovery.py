@@ -20,9 +20,16 @@ from app.utils.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+def _arquivo_de_sessao(user: str) -> Path:
+    """Onde o instaloader guarda a sessão (no Windows, %LOCALAPPDATA%/Instaloader)."""
+    from instaloader.instaloader import get_default_session_filename
+
+    return Path(get_default_session_filename(user))
+
+
 def _instaloader_sessionid(user: str) -> Optional[str]:
     """Extrai o cookie `sessionid` da sessão salva pelo instaloader."""
-    path = Path(os.path.expanduser(f"~/.config/instaloader/session-{user}"))
+    path = _arquivo_de_sessao(user)
     if not path.exists():
         return None
     try:
@@ -54,17 +61,17 @@ class InstagrapiDiscovery:
             except Exception as exc:  # pragma: no cover
                 logger.warning("discovery_session inválida (%s).", exc)
 
-        pwd = s.instaloader_password.strip()
-        if self.session_user and pwd:
-            cl.login(self.session_user, pwd)  # relogin reusa o device carregado
-            sess.parent.mkdir(parents=True, exist_ok=True)
-            cl.dump_settings(sess)
-            return cl
-
-        # Último recurso: cookie sessionid do instaloader (instável).
+        # A sessão do navegador vem primeiro: login por senha numa conta de download dispara "Checkpoint".
         sid = _instaloader_sessionid(self.session_user)
         if sid:
             cl.login_by_sessionid(sid)
+            return cl
+
+        pwd = s.instaloader_password.strip()
+        if self.session_user and pwd:
+            cl.login(self.session_user, pwd)  # último recurso; relogin reusa o device carregado
+            sess.parent.mkdir(parents=True, exist_ok=True)
+            cl.dump_settings(sess)
             return cl
         raise RuntimeError(
             "Sem credenciais para descoberta. Defina INSTALOADER_PASSWORD ou crie a "
