@@ -1,11 +1,11 @@
-"""Descoberta automática de Reels novos via instagrapi.
+"""Descoberta automática de Reels novos pela API web do instaloader.
 
-Reaproveita a SESSÃO já criada para o instaloader (cookie `sessionid` da conta
-belle_fox_fit) — assim não precisa de novo login. Usado pelo scheduler para
-encher a fila sozinho quando AUTO_DISCOVERY=true.
+Usa a SESSÃO do navegador da conta descartável (arquivo do instaloader), a mesma que o
+download já usa. Antes usava o instagrapi, que finge ser o app de celular: com cookie de
+navegador o Instagram derrubava a sessão em segundos (403 login_required, 29/10/2026).
+O instaloader fala a API web, que combina com esse cookie.
 
-⚠️ NÃO-oficial: lista o feed de Reels de um perfil por API privada. Pode violar
-   o ToS da Meta e estressar a conta usada. Opt-in, por sua conta e risco.
+⚠️ NÃO-oficial: pode violar o ToS da Meta e estressar a conta usada. Opt-in, por sua conta e risco.
 """
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from app.config.settings import get_settings
+from app.sources.descoberta_estado import EstadoDescoberta
 from app.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -41,57 +42,75 @@ def _instaloader_sessionid(user: str) -> Optional[str]:
         return None
 
 
+def _sessao_expirada(exc: Exception) -> bool:
+    """True quando o Instagram recusou a sessao (login_required), nao quando so limitou o ritmo (429)."""
+    nome = type(exc).__name__
+    texto = str(exc).lower()
+    return nome in ("LoginRequired", "LoginRequiredException") or "login_required" in texto or "redirected to login" in texto or "login required" in texto
+
+
 class InstagrapiDiscovery:
+    """Nome mantido por compatibilidade com o agendador; a implementação é do instaloader."""
+
     def __init__(self) -> None:
         s = get_settings()
         self.session_user = s.instaloader_user.strip()
         self.amount = s.discovery_amount
 
-    def _client(self):
-        from instagrapi import Client
+    def _buscar(self, username: str) -> List[str]:
+        """Shortcodes dos Reels mais recentes do perfil (mais novo primeiro). Levanta se o Instagram recusar."""
+        import instaloader
 
-        s = get_settings()
-        cl = Client()
-        sess = s.data_path / "discovery_session.json"
-
-        # Reaproveita o "device"/sessão salvos (reduz challenges).
-        if sess.exists():
-            try:
-                cl.load_settings(sess)
-            except Exception as exc:  # pragma: no cover
-                logger.warning("discovery_session inválida (%s).", exc)
-
-        # A sessão do navegador vem primeiro: login por senha numa conta de download dispara "Checkpoint".
-        sid = _instaloader_sessionid(self.session_user)
-        if sid:
-            cl.login_by_sessionid(sid)
-            return cl
-
-        pwd = s.instaloader_password.strip()
-        if self.session_user and pwd:
-            cl.login(self.session_user, pwd)  # último recurso; relogin reusa o device carregado
-            sess.parent.mkdir(parents=True, exist_ok=True)
-            cl.dump_settings(sess)
-            return cl
-        raise RuntimeError(
-            "Sem credenciais para descoberta. Defina INSTALOADER_PASSWORD ou crie a "
-            "sessão via tools/import_firefox_session.py."
+        loader = instaloader.Instaloader(
+            download_pictures=False, download_videos=False, download_video_thumbnails=False,
+            download_comments=False, save_metadata=False, quiet=True,
+            max_connection_attempts=1,          # sem retentativa interna: quem decide esperar é o EstadoDescoberta
         )
+        if not self.session_user:
+            raise RuntimeError("Sem INSTALOADER_USER: crie a sessão com tools/import_firefox_session.py.")
+        loader.load_session_from_file(self.session_user)
+        perfil = instaloader.Profile.from_username(loader.context, username)
+        codigos: List[str] = []
+        for post in perfil.get_posts():
+            if len(codigos) >= self.amount:
+                break
+            if not post.is_video:
+                continue
+            tipo = getattr(post, "product_type", "") or "clips"
+            if tipo != "clips":
+                continue
+            codigos.append(post.shortcode)
+        return codigos
+
+    def _estado(self) -> EstadoDescoberta:
+        return EstadoDescoberta(get_settings().data_path / "descoberta_estado.json")
 
     def discover(self, username: str) -> List[str]:
-        """Retorna URLs dos Reels mais recentes do perfil (mais novo primeiro)."""
+        """Retorna URLs dos Reels mais recentes do perfil (mais novo primeiro).
+
+        Depois de uma falha (429, sessão derrubada) fica em pausa com espera crescente: insistir a
+        cada ciclo só piora o bloqueio.
+        """
+        estado = self._estado()
+        if not estado.pode_tentar():
+            logger.info("Descoberta em pausa por mais %d min (falha anterior).", estado.segundos_de_espera() // 60)
+            return []
         try:
-            cl = self._client()
-            uid = cl.user_id_from_username(username)
-            clips = cl.user_clips(uid, amount=self.amount)
+            codigos = self._buscar(username)
         except Exception as exc:
-            logger.error("Descoberta falhou: %s", exc)
+            sessao = _sessao_expirada(exc)
+            estado.falha("login_required" if sessao else "erro")
+            if sessao:
+                logger.error(
+                    "Descoberta: o Instagram recusou a sessão da conta de download (%s). Entre nessa conta no "
+                    "Firefox e rode tools/import_firefox_session.py %s. Nova tentativa em %d h.",
+                    exc, self.session_user or "<usuario>", estado.segundos_de_espera() // 3600,
+                )
+            else:
+                logger.error("Descoberta falhou: %s. Nova tentativa em %d min.", exc, estado.segundos_de_espera() // 60)
             return []
 
-        urls = [
-            f"https://www.instagram.com/reel/{m.code}/"
-            for m in clips
-            if getattr(m, "code", None)
-        ]
+        estado.sucesso()
+        urls = [f"https://www.instagram.com/reel/{c}/" for c in codigos]
         logger.info("Descoberta: %d Reel(s) de @%s.", len(urls), username)
         return urls

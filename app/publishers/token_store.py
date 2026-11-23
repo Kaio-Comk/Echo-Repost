@@ -56,13 +56,6 @@ def _refresh_host() -> Optional[str]:
     return "https://graph.instagram.com" if "graph.instagram.com" in get_settings().ig_api_base else None
 
 
-def get_access_token() -> str:
-    data = _load()
-    if data and data.get("access_token"):
-        return data["access_token"]
-    return get_settings().ig_access_token
-
-
 def status() -> dict:
     """Resumo legível do token (para CLI/monitoramento)."""
     data = _load()

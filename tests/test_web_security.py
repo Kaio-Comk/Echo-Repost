@@ -14,7 +14,7 @@ def cliente(tmp_path, monkeypatch):
     (tmp_path / "video.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
     from app.web import api
     monkeypatch.setattr(api.app.router, "on_startup", [])
-    return TestClient(api.app)
+    return TestClient(api.app, base_url="http://127.0.0.1:8000")   # como o navegador do próprio PC acessa
 
 
 PELO_TUNEL = {"cf-connecting-ip": "203.0.113.7"}
@@ -64,3 +64,17 @@ def test_post_da_propria_origem_passa(cliente):
         "/publish", headers={"origin": "http://127.0.0.1:8000", "host": "127.0.0.1:8000"}, follow_redirects=False
     )
     assert r.status_code == 303
+
+
+@pytest.mark.parametrize("metodo,rota", [("get", "/media/video.mp4"), ("get", "/"), ("post", "/publish")])
+def test_dns_rebinding_e_recusado(cliente, metodo, rota):
+    # Um site que aponta o próprio domínio para 127.0.0.1: Host e Origin "batem" entre si e não há
+    # cabeçalho de proxy. Sem a checagem de Host, aprovar/publicar passaria.
+    falso = {"host": "site-malicioso.example:8000", "origin": "http://site-malicioso.example:8000"}
+    r = getattr(cliente, metodo)(rota, headers=falso)
+    assert r.status_code == 403
+
+
+@pytest.mark.parametrize("host", ["localhost:8000", "127.0.0.1", "[::1]:8000", "192.168.0.10:8000"])
+def test_host_local_ou_ip_continua_passando(cliente, host):
+    assert cliente.get("/media/video.mp4", headers={"host": host}).status_code == 200

@@ -10,6 +10,7 @@ Funcionalidades:
 """
 from __future__ import annotations
 
+import ipaddress
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -45,9 +46,29 @@ async def _so_media_pela_internet(request: Request, call_next):
     de_fora = any(h in request.headers for h in _CABECALHOS_DE_PROXY)
     if de_fora and not request.url.path.startswith("/media/"):
         return HTMLResponse("Acesso restrito ao computador local.", status_code=403)
+    if not de_fora and not _host_local(request.headers.get("host", "")):
+        return HTMLResponse("Host não permitido.", status_code=403)
     if request.method not in ("GET", "HEAD", "OPTIONS") and not _origem_confiavel(request):
         return HTMLResponse("Origem não confiável.", status_code=403)
     return await call_next(request)
+
+
+def _host_local(host: str) -> bool:
+    """DNS rebinding (04/11/2026): um site pode apontar o próprio domínio para 127.0.0.1; o navegador
+    manda `Host` e `Origin` desse domínio, que "batem" entre si, e o painel sem login aprovaria e
+    publicaria. Acesso local só com `localhost` ou IP literal (o rebinding precisa de um nome)."""
+    nome = host.strip().lower()
+    if nome.startswith("["):                       # [::1]:8000
+        nome = nome[1:nome.find("]")] if "]" in nome else ""
+    elif nome.count(":") == 1:                     # 127.0.0.1:8000 / localhost:8000
+        nome = nome.split(":", 1)[0]
+    if nome == "localhost":
+        return True
+    try:
+        ipaddress.ip_address(nome)
+        return True
+    except ValueError:
+        return False
 
 
 def _origem_confiavel(request: Request) -> bool:
